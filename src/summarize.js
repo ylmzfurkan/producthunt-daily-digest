@@ -1,14 +1,12 @@
-import { writeFileSync, existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import {
-  DATA_RAW,
-  DATA_SUMMARY,
-  ensureDataDirs,
   getOpenAIKey,
   getModel,
   phToday,
+  phYesterday,
   assertValidDate,
 } from "./config.js";
+import { getProducts, setSummaries } from "./db.js";
 
 const OPENAI_URL = "https://api.openai.com/v1/chat/completions";
 const BATCH_SIZE = 10;
@@ -101,41 +99,31 @@ async function summarizeBatch(products) {
 }
 
 export async function summarizeDay(date, { top = DEFAULT_TOP } = {}) {
-  ensureDataDirs();
-  const rawPath = path.join(DATA_RAW, `${date}.json`);
-  if (!existsSync(rawPath)) {
-    throw new Error(`No raw data for ${date}. Run first: npm run fetch -- ${date}`);
+  const all = getProducts(date); // already sorted most-upvoted first
+  if (all.length === 0) {
+    throw new Error(`No data for ${date}. Run first: npm run fetch -- ${date}`);
   }
-  const raw = JSON.parse(readFileSync(rawPath, "utf8"));
-  const outPath = path.join(DATA_SUMMARY, `${date}.json`);
-
-  const targets = [...raw.posts]
-    .sort((a, b) => b.votesCount - a.votesCount)
-    .slice(0, top || raw.posts.length);
-
-  const existing = existsSync(outPath)
-    ? JSON.parse(readFileSync(outPath, "utf8")).summaries
-    : {};
-  const pending = targets.filter((p) => !existing[p.id]);
+  const targets = top ? all.slice(0, top) : all;
+  const pending = targets.filter((p) => !p.summary);
 
   if (pending.length === 0) {
     console.log(`✓ Summaries for ${date} are already ready (${targets.length} products).`);
     return;
   }
-  if (top && raw.posts.length > targets.length) {
+  if (top && all.length > targets.length) {
     console.log(
-      `ℹ Of ${raw.posts.length} products, the top ${targets.length} most-upvoted will be summarized ` +
+      `ℹ Of ${all.length} products, the top ${targets.length} most-upvoted will be summarized ` +
         `(use --all for all of them).`
     );
   }
 
   console.log(`⏳ Summarizing ${pending.length} products (in batches of ${BATCH_SIZE})...`);
-  const summaries = { ...existing };
+  let done = 0;
   let failed = 0;
 
   for (let i = 0; i < pending.length; i += BATCH_SIZE) {
     const batch = pending.slice(i, i + BATCH_SIZE);
-    const label = `grup ${Math.floor(i / BATCH_SIZE) + 1}/${Math.ceil(pending.length / BATCH_SIZE)}`;
+    const label = `batch ${Math.floor(i / BATCH_SIZE) + 1}/${Math.ceil(pending.length / BATCH_SIZE)}`;
     let batchResult = null;
     for (let attempt = 1; attempt <= 2 && !batchResult; attempt++) {
       try {
@@ -145,33 +133,34 @@ export async function summarizeDay(date, { top = DEFAULT_TOP } = {}) {
       }
     }
     if (batchResult) {
-      Object.assign(summaries, batchResult);
-      const missing = batch.filter((p) => !batchResult[p.id]);
-      failed += missing.length;
-      console.log(`✓ ${label}: got ${Object.keys(batchResult).length} summaries`);
+      // Persist each batch as it lands, so a long run isn't lost if interrupted
+      setSummaries(date, batchResult);
+      const got = Object.keys(batchResult).length;
+      done += got;
+      failed += batch.filter((p) => !batchResult[p.id]).length;
+      console.log(`✓ ${label}: got ${got} summaries`);
     } else {
       failed += batch.length;
       console.warn(`⚠ ${label} skipped; these products will show without a summary.`);
     }
-    // Ara kayıt: uzun koşularda yarıda kesilirse emek kaybolmasın
-    writeFileSync(
-      outPath,
-      JSON.stringify({ date, generatedAt: new Date().toISOString(), summaries }, null, 2)
-    );
   }
 
   console.log(
-    `✓ Summarizing done: ${Object.keys(summaries).length} summaries` +
+    `✓ Summarizing done: ${done} summaries` +
       (failed ? `, ${failed} products could not be summarized` : "") +
-      ` → ${outPath}`
+      ` → ${date}`
   );
 }
 
-// Doğrudan çalıştırma: node src/summarize.js [YYYY-MM-DD] [--all]
+// Direct run: node src/summarize.js [YYYY-MM-DD] [--yesterday] [--all]
 if (process.argv[1] && import.meta.url.endsWith(path.basename(process.argv[1]))) {
   const args = process.argv.slice(2);
   const dateArg = args.find((a) => !a.startsWith("--"));
-  const date = dateArg ? assertValidDate(dateArg) : phToday();
+  const date = dateArg
+    ? assertValidDate(dateArg)
+    : args.includes("--yesterday")
+      ? phYesterday()
+      : phToday();
   const top = args.includes("--all") ? 0 : DEFAULT_TOP;
   summarizeDay(date, { top }).catch((err) => {
     console.error("❌ " + err.message);

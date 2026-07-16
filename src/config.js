@@ -5,9 +5,11 @@ import path from "node:path";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 export const ROOT = path.resolve(__dirname, "..");
-export const DATA_RAW = path.join(ROOT, "data", "raw");
-export const DATA_SUMMARY = path.join(ROOT, "data", "summary");
+export const DATA_DIR = path.join(ROOT, "data");
+export const DB_PATH = path.join(DATA_DIR, "digest.db");
 export const PORT = 3717;
+// Number of most-recent days to keep (rolling retention window).
+export const RETENTION_DAYS = 7;
 
 // Basit .env okuyucu — tek değişkenimiz var, dotenv paketine gerek yok
 function loadEnv() {
@@ -67,13 +69,12 @@ export function getModel() {
   return loadEnv().OPENAI_MODEL || process.env.OPENAI_MODEL || "gpt-4.1-mini";
 }
 
-export function ensureDataDirs() {
-  mkdirSync(DATA_RAW, { recursive: true });
-  mkdirSync(DATA_SUMMARY, { recursive: true });
+export function ensureDataDir() {
+  mkdirSync(DATA_DIR, { recursive: true });
 }
 
-// Product Hunt günü PST/PDT (America/Los_Angeles) tabanlıdır.
-// Tarih verilmezse PH saat dilimindeki "bugün"ü döner.
+// The Product Hunt day is based on PST/PDT (America/Los_Angeles).
+// With no date given, returns "today" in the PH timezone.
 export function phToday() {
   const fmt = new Intl.DateTimeFormat("en-CA", {
     timeZone: "America/Los_Angeles",
@@ -82,6 +83,14 @@ export function phToday() {
     day: "2-digit",
   });
   return fmt.format(new Date()); // YYYY-MM-DD
+}
+
+// The most recently *completed* PH day (yesterday in the PH timezone).
+// Use this for the daily job so the day's voting/ranking has fully settled.
+export function phYesterday() {
+  const d = new Date(`${phToday()}T12:00:00Z`);
+  d.setUTCDate(d.getUTCDate() - 1);
+  return d.toISOString().slice(0, 10);
 }
 
 // Bir YYYY-MM-DD gününün PH saat dilimindeki başlangıç/bitişini ISO (UTC) olarak döner.

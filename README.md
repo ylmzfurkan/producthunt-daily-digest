@@ -11,16 +11,24 @@ dashboard. No sign-up, no login.
 ## How it works
 
 ```
-Daily cron (e.g. 21:00 Europe)
+Daily cron (noon Europe, for the previous day)
    ├─ fetch.js      → pull the day's top products from the Product Hunt API
    ├─ summarize.js  → generate an English summary per product (OpenAI GPT-4.1-mini)
-   └─ writes JSON into data/
+   ├─ stores everything in SQLite (data/digest.db)
+   └─ prunes to the most recent 7 days
                          ↓
-   server.js (always running) → serves the landing page + dashboard from data/
+   server.js (always running) → serves the landing page + dashboard from the database
 ```
 
 Users only ever read pre-generated data — no AI calls happen on page load, so the site is
 fast and the cost is fixed and tiny.
+
+### Data storage
+
+Everything is stored in a single **SQLite** file at `data/digest.db` (created on first run;
+no separate database server needed). Each pipeline run keeps only the **most recent 7 days**
+and deletes older data automatically, so the dashboard always shows the last week. Adjust the
+window with `RETENTION_DAYS` in `src/config.js`.
 
 ## Requirements
 
@@ -73,6 +81,10 @@ npm install --omit=dev
 cp .env.example .env      # fill in PH_TOKEN and OPENAI_API_KEY
 ```
 
+> `better-sqlite3` ships prebuilt binaries for common platforms, so `npm install` usually
+> needs no compiler. If it does try to build from source (uncommon), install build tools
+> first: `sudo apt-get install -y build-essential python3`.
+
 **2. Run the server continuously with pm2**
 
 ```bash
@@ -89,21 +101,24 @@ The server listens on port **3717**. Put nginx (or Caddy) in front of it for a d
 Edit the crontab (`crontab -e`) and add:
 
 ```cron
-# Run at 21:00 Europe time every day
+# Run at 12:00 Europe time every day, for the previous (fully-settled) PH day
 CRON_TZ=Europe/Istanbul
-0 21 * * * cd /opt/producthunt && /usr/bin/node src/pipeline.js >> /opt/producthunt/cron.log 2>&1
+0 12 * * * cd /opt/producthunt && /usr/bin/node src/pipeline.js --yesterday >> /opt/producthunt/cron.log 2>&1
 ```
 
-- `CRON_TZ` makes the schedule fire at 21:00 in that timezone regardless of the server's
-  own timezone (supported by the default cron on Debian/Ubuntu). Change it to your zone
+- `--yesterday` fetches the **most recently completed** Product Hunt day, so its 24h of
+  voting has fully settled into a final ranking.
+- `CRON_TZ` makes the schedule fire at that local time regardless of the server's own
+  timezone (supported by the default cron on Debian/Ubuntu). Change it to your zone
   (e.g. `Europe/Berlin`).
 - Check `which node` on the server and use that full path if it isn't `/usr/bin/node`.
 
-> **Note on which day you capture.** Product Hunt's daily leaderboard resets at midnight
-> US Pacific time and keeps gaining votes all day. Running at 21:00 Europe (~noon Pacific)
-> captures *today so far* — a mid-day snapshot. If you'd rather show the fully-settled
-> previous day, schedule the job for the early European morning instead; it will pull that
-> completed day.
+> **Why noon, and why yesterday.** A Product Hunt day resets at midnight **US Pacific**
+> time and keeps gaining votes for the full 24h. So "July 16" only finalizes at midnight
+> Pacific — about **10:00–11:00 Europe on July 17**. Running at **12:00 Europe** and
+> fetching `--yesterday` guarantees you always capture the day that has just fully closed,
+> with its real, settled ranking. (Running earlier, e.g. 06:00, would land before Pacific
+> midnight and capture a still-in-progress day.)
 
 ## Cost
 

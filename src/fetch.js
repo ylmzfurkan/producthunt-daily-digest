@@ -1,13 +1,12 @@
-import { writeFileSync, existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import {
-  DATA_RAW,
   getToken,
-  ensureDataDirs,
   phToday,
+  phYesterday,
   phDayRange,
   assertValidDate,
 } from "./config.js";
+import { upsertProducts, dayHasData, getDay } from "./db.js";
 
 const API_URL = "https://api.producthunt.com/v2/api/graphql";
 
@@ -69,11 +68,9 @@ async function gql(token, variables) {
 
 export async function fetchDay(date, { force = false, all = false } = {}) {
   const limit = all ? Infinity : DEFAULT_LIMIT;
-  ensureDataDirs();
-  const outPath = path.join(DATA_RAW, `${date}.json`);
-  if (!force && existsSync(outPath)) {
-    const cached = JSON.parse(readFileSync(outPath, "utf8"));
-    console.log(`✓ ${date} zaten cache'te (${cached.posts.length} ürün): ${outPath}`);
+  if (!force && dayHasData(date)) {
+    const cached = getDay(date);
+    console.log(`✓ ${date} already in the database (${cached.posts.length} products)`);
     return cached;
   }
 
@@ -84,7 +81,7 @@ export async function fetchDay(date, { force = false, all = false } = {}) {
   const byId = new Map();
   let after = null;
 
-  console.log(`⏳ ${date} günü Product Hunt'tan çekiliyor...`);
+  console.log(`⏳ Fetching ${date} from Product Hunt...`);
   do {
     const data = await gql(token, { postedAfter, postedBefore, after });
     const page = data.posts;
@@ -109,19 +106,23 @@ export async function fetchDay(date, { force = false, all = false } = {}) {
   } while (after);
 
   const posts = [...byId.values()].slice(0, limit === Infinity ? undefined : limit);
-  const result = { date, fetchedAt: new Date().toISOString(), posts };
-  writeFileSync(outPath, JSON.stringify(result, null, 2));
-  console.log(`✓ ${posts.length} ürün kaydedildi: ${outPath}`);
-  return result;
+  const fetchedAt = new Date().toISOString();
+  upsertProducts(date, posts, fetchedAt);
+  console.log(`✓ Saved ${posts.length} products for ${date}`);
+  return { date, fetchedAt, posts };
 }
 
-// Doğrudan çalıştırma: node src/fetch.js [YYYY-MM-DD] [--force] [--all]
+// Direct run: node src/fetch.js [YYYY-MM-DD] [--yesterday] [--force] [--all]
 if (process.argv[1] && import.meta.url.endsWith(path.basename(process.argv[1]))) {
   const args = process.argv.slice(2);
   const force = args.includes("--force");
   const all = args.includes("--all");
   const dateArg = args.find((a) => !a.startsWith("--"));
-  const date = dateArg ? assertValidDate(dateArg) : phToday();
+  const date = dateArg
+    ? assertValidDate(dateArg)
+    : args.includes("--yesterday")
+      ? phYesterday()
+      : phToday();
   fetchDay(date, { force, all }).catch((err) => {
     console.error("❌ " + err.message);
     process.exit(1);
