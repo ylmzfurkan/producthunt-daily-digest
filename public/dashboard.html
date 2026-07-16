@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Product Hunt Daily Digest — Dashboard</title>
+  <link rel="stylesheet" href="style.css" />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🚀</text></svg>" />
+</head>
+<body>
+  <header>
+    <div class="header-row">
+      <h1><a href="/" class="home-link">🚀 Product Hunt Daily Digest</a></h1>
+      <div class="day-nav">
+        <button id="prev-day" title="Previous day">‹</button>
+        <select id="day-select"></select>
+        <button id="next-day" title="Next day">›</button>
+      </div>
+    </div>
+    <div class="filter-row">
+      <input id="search" type="search" placeholder="Search products..." />
+      <select id="topic-filter">
+        <option value="">All categories</option>
+      </select>
+      <span id="count" class="count"></span>
+    </div>
+  </header>
+
+  <main>
+    <div id="status" class="status" hidden></div>
+    <div id="cards" class="cards"></div>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>
