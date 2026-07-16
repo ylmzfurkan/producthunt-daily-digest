@@ -178,8 +178,15 @@ main { padding: 20px 24px 60px; max-width: 1280px; margin: 0 auto; }
 }
 
 /* Dashboard header title links back to the landing page */
-.home-link { color: inherit; text-decoration: none; }
+.home-link {
+  color: inherit;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
 .home-link:hover { color: var(--accent); }
+.brand-logo { width: 28px; height: 28px; display: block; }
 
 /* ---------- Landing page ---------- */
 .landing {
@@ -189,7 +196,7 @@ main { padding: 20px 24px 60px; max-width: 1280px; margin: 0 auto; }
   text-align: center;
 }
 
-.landing .logo { font-size: 56px; line-height: 1; }
+.landing .logo { width: 140px; height: 140px; }
 
 .landing h1 {
   font-size: 34px;
