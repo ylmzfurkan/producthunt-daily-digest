@@ -1,0 +1,24 @@
+# Reverse proxy: public port 80/443 -> Node app on 127.0.0.1:3717
+# 1. Replace your-domain.com with your real domain.
+# 2. Copy to /etc/nginx/sites-available/producthunt and symlink into sites-enabled.
+# 3. Run certbot to add HTTPS automatically (it rewrites this file for you).
+#
+#   sudo cp deploy/nginx.conf.example /etc/nginx/sites-available/producthunt
+#   sudo ln -s /etc/nginx/sites-available/producthunt /etc/nginx/sites-enabled/
+#   sudo nginx -t && sudo systemctl reload nginx
+#   sudo certbot --nginx -d your-domain.com -d www.your-domain.com
+
+server {
+    listen 80;
+    listen [::]:80;
+    server_name your-domain.com www.your-domain.com;
+
+    location / {
+        proxy_pass http://127.0.0.1:3717;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}

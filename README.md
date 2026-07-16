@@ -120,6 +120,22 @@ CRON_TZ=Europe/Istanbul
 > with its real, settled ranking. (Running earlier, e.g. 06:00, would land before Pacific
 > midnight and capture a still-in-progress day.)
 
+**4. Domain + HTTPS (nginx + Let's Encrypt)**
+
+Point an `A` record for your domain at the server's IP, then:
+
+```bash
+sudo apt-get install -y nginx certbot python3-certbot-nginx
+sudo cp deploy/nginx.conf.example /etc/nginx/sites-available/producthunt
+# edit the file and replace your-domain.com with your real domain
+sudo ln -s /etc/nginx/sites-available/producthunt /etc/nginx/sites-enabled/
+sudo nginx -t && sudo systemctl reload nginx
+sudo certbot --nginx -d your-domain.com -d www.your-domain.com
+```
+
+`certbot` obtains the certificate, rewrites the nginx config to serve HTTPS on 443, and sets
+up auto-renewal. Your site is then live at `https://your-domain.com`.
+
 ## Cost
 
 Summarizing ~50 products/day with `gpt-4.1-mini` costs roughly **$1–2 per month**. Summaries
