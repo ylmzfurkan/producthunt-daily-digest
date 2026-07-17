@@ -11,7 +11,7 @@ dashboard. No sign-up, no login.
 ## How it works
 
 ```
-Daily cron (12:01 AM US Pacific, for the previous day)
+Daily cron (08:01 UTC, just after the PH day closes, for the previous day)
    ├─ fetch.js      → pull the day's top products from the Product Hunt API
    ├─ summarize.js  → generate an English summary per product (OpenAI GPT-4.1-mini)
    ├─ stores everything in SQLite (data/digest.db)
@@ -101,23 +101,23 @@ The server listens on port **3717**. Put nginx (or Caddy) in front of it for a d
 Edit the crontab (`crontab -e`) and add:
 
 ```cron
-# Run at 12:01 AM US Pacific every day, for the previous (fully-settled) PH day
-CRON_TZ=America/Los_Angeles
-1 0 * * * cd /opt/producthunt && /usr/bin/node src/pipeline.js --yesterday >> /opt/producthunt/cron.log 2>&1
+# Run at 08:01 UTC every day, for the previous (fully-settled) PH day
+1 8 * * * cd /opt/producthunt && /usr/bin/node src/pipeline.js --yesterday >> /opt/producthunt/cron.log 2>&1
 ```
 
 - `--yesterday` fetches the **most recently completed** Product Hunt day, so its 24h of
   voting has fully settled into a final ranking.
-- `CRON_TZ=America/Los_Angeles` makes the schedule fire at Pacific local time regardless
-  of the server's own timezone (supported by the default cron on Debian/Ubuntu). It also
-  tracks PST/PDT automatically, so the job always runs 1 minute after the PH day rolls over.
+- The schedule is written in **UTC** (the server's timezone). Don't rely on `CRON_TZ` — on
+  some systems the default cron silently ignores it and runs at the server's local time
+  instead, which lands mid-day in the Pacific timezone and fetches the wrong (still-open)
+  day. Scheduling directly in UTC avoids that footgun.
 - Check `which node` on the server and use that full path if it isn't `/usr/bin/node`.
 
-> **Why 12:01 AM Pacific, and why yesterday.** A Product Hunt day resets at midnight **US
-> Pacific** time and keeps gaining votes for the full 24h. So "July 16" only finalizes at
-> midnight Pacific. Running at **12:01 AM Pacific** and fetching `--yesterday` fires just
-> one minute after that day fully closes, so you capture its real, settled ranking at the
-> earliest possible moment. (Running before Pacific midnight would land inside a
+> **Why 08:01 UTC, and why yesterday.** A Product Hunt day resets at midnight **US Pacific**
+> time and keeps gaining votes for the full 24h. Midnight Pacific is **07:00 UTC in summer
+> (PDT)** and **08:00 UTC in winter (PST)**. Running at **08:01 UTC** fires just after the
+> day fully closes in *both* seasons — no DST logic needed — so `--yesterday` always captures
+> the just-settled ranking. (Running before Pacific midnight would land inside a
 > still-in-progress day and capture an unsettled ranking.)
 
 **4. Domain + HTTPS (nginx + Let's Encrypt)**
